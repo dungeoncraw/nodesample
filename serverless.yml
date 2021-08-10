@@ -1,0 +1,146 @@
+service: sample-admin-server
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  stage: ${opt:stage, dev}
+  environment:
+    STAGE: '${self:provider.stage}'
+    MONGODB_URI: '${self:custom.db.${self:provider.stage}}'
+    IMAGE_BUCKET: '${self:custom.imageBucket.${self:provider.stage}}'
+  logRetentionInDays: 90
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - "s3:GetObject"
+            - "s3:PutObject"
+            - "s3:PutObjectAcl"
+          Resource:
+            - "arn:aws:s3:::${self:custom.imageBucket.${self:provider.stage}}/*"
+
+plugins:
+  - serverless-webpack
+  - serverless-pseudo-parameters
+
+package:
+  individually: true
+
+functions:
+  cAuthorizer:
+    handler: src/auth/authorizer.handler
+
+  update-partner:
+    handler: src/functions/partner/updatePartner.handler
+    timeout: 30
+    events:
+      - http:
+          path: /partner/{partnerId}
+          method: put
+          authorizer: cAuthorizer
+          cors: true
+
+  get-upload-image-partner:
+    handler: src/functions/partner/getSignedImageUpload.handler
+    timeout: 30
+    events:
+      - http:
+          path: /partner/{partnerId}/signed-image
+          method: get
+          authorizer: cAuthorizer
+          cors: true
+
+  add-image-partner:
+    handler: src/functions/partner/addPartnerImage.handler
+    timeout: 30
+    events:
+      - http:
+          path: /partner/{partnerId}/image
+          method: post
+          authorizer: cAuthorizer
+          cors: true
+
+resources:
+  Resources:
+    GatewayResponseDefault4XX:
+      Type: "AWS::ApiGateway::GatewayResponse"
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
+    PartnersImagesBucket:
+      Type: "AWS::S3::Bucket"
+      Properties:
+        BucketName: ${self:custom.imageBucket.${self:provider.stage}}
+        CorsConfiguration:
+          CorsRules:
+            - 
+              AllowedOrigins:
+                - "*"
+              AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - HEAD
+              MaxAge: 3600
+    PartnersImagesBucketPolicy:
+      Type: "AWS::S3::BucketPolicy"
+      Properties:
+        Bucket: !Ref PartnersImagesBucket
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - "s3:GetObject"
+              Resource:
+                - "arn:aws:s3:::${self:custom.imageBucket.${self:provider.stage}}/*"
+              Principal: "*"
+            - Effect: "Allow"
+              Action:
+                - "s3:PutObject"
+                - "s3:DeleteObject"
+              Resource:
+                - "arn:aws:s3:::${self:custom.imageBucket.${self:provider.stage}}/*"
+              Principal:
+                AWS: "#{AWS::AccountId}"
+    StaticSiteAdmin:
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+        BucketName: ${self:custom.staticAdminBucket.${self:provider.stage}}
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: index.html
+    StaticSiteAdminBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref StaticSiteAdmin
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal: "*"
+              Action:
+                - "s3:GetObject"
+              Resource:
+                - "arn:aws:s3:::${self:custom.staticAdminBucket.${self:provider.stage}}/*"
+custom:
+  imageBucket:
+    dev: images-dev
+    prod: images-prod
+  staticAdminBucket:
+    dev: static-site-dev
+    prod: static-site-prod
+  webpack:
+    webpackConfig: 'webpack.config.js'
+    packager: 'yarn'
+    includeModules: true
+  db:
+    dev: ''
+    prod: ''

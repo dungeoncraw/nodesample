@@ -1,0 +1,14 @@
+{
+    "roles": [
+        {
+            "name": "admin",
+            "resourcesForPolicy": [
+                {
+                    "httpVerb": "*",
+                    "path": "*",
+                    "effect": "Allow"
+                }
+            ]
+        }
+    ]
+}

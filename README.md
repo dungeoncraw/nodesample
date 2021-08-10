@@ -1,2 +1,2 @@
 # nodesample
-Sample codes
+Sample nodejs code using serverless to build and deploy application
